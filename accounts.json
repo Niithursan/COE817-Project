@@ -1,0 +1,17 @@
+{
+    "alice": {
+        "password_hash": "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824",
+        "balance": 750.0,
+        "pre_shared_key": "a1b2c3d4e5f60718a1b2c3d4e5f60718"
+    },
+    "bob": {
+        "password_hash": "5e884898da28047151d0e56f8dc6292773603d0d6aabbdd62a11ef721d1542d8",
+        "balance": 2000.0,
+        "pre_shared_key": "18071f6e5d4c3b2a18071f6e5d4c3b2a"
+    },
+    "charlie": {
+        "password_hash": "1afda89737a745f15d42807d54f67c803727d75ce443b0f3a659531b38ae660f",
+        "balance": 400.0,
+        "pre_shared_key": "deadbeefcafe1234deadbeefcafe1234"
+    }
+}

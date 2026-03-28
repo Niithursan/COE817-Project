@@ -52,6 +52,43 @@ AUDIT_KEY = bytes.fromhex('0123456789abcdef0123456789abcdef')
 
 
 # ============================================================
+# Replay Attack Prevention (MAC Cache)
+# ============================================================
+
+class ReplayCache:
+    """Thread-safe cache of recently seen MACs to prevent replay attacks.
+
+    Even within the 60-second timestamp window, each unique MAC may only
+    be processed once.  Stale entries are purged automatically.
+    """
+
+    def __init__(self, ttl_seconds=60):
+        self._cache = {}            # mac_hex -> timestamp (float)
+        self._lock = threading.Lock()
+        self._ttl = ttl_seconds
+
+    def _purge_stale(self):
+        """Remove entries older than the TTL.  Must be called with lock held."""
+        cutoff = time.time() - self._ttl
+        stale_keys = [k for k, ts in self._cache.items() if ts < cutoff]
+        for k in stale_keys:
+            del self._cache[k]
+
+    def check_and_add(self, mac_bytes):
+        """Return True if the MAC is new (and record it).  False if duplicate."""
+        mac_hex = mac_bytes.hex()
+        with self._lock:
+            self._purge_stale()
+            if mac_hex in self._cache:
+                return False
+            self._cache[mac_hex] = time.time()
+            return True
+
+
+replay_cache = ReplayCache(ttl_seconds=60)
+
+
+# ============================================================
 # Account Management
 # ============================================================
 
@@ -360,6 +397,20 @@ def handle_atm_client(conn, addr, account_mgr, audit_log, gui_callback):
                 audit_log.log(username, "SECURITY ALERT — MAC verification failed", gui_callback)
                 error_response = encrypt_and_mac(k_enc, k_mac,
                     pack_fields(b"ERROR", b"Integrity check failed"))
+                send_data(conn, error_response)
+                continue
+
+            # --- Replay attack detection (duplicate MAC check) ---
+            # Extract the MAC tag from the raw request (last field in the
+            # packed [ciphertext, mac] structure).
+            _, request_mac = unpack_fields(raw_request, 2)
+            if not replay_cache.check_and_add(request_mac):
+                gui_callback(f"[SECURITY] Replay attack detected from {username}! (Duplicate MAC)")
+                audit_log.log(username,
+                    "SECURITY ALERT — Replay attack detected (Duplicate MAC)",
+                    gui_callback)
+                error_response = encrypt_and_mac(k_enc, k_mac,
+                    pack_fields(b"ERROR", b"Replay attack detected"))
                 send_data(conn, error_response)
                 continue
 

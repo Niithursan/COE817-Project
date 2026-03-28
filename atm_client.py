@@ -26,7 +26,6 @@ Usage:
 import socket
 import threading
 import tkinter as tk
-from tkinter import ttk, messagebox
 import datetime
 
 from crypto_utils import (
@@ -507,7 +506,6 @@ class ATMClientGUI:
         self.k_enc = None
         self.k_mac = None
         self.username = None
-        self._proto_log("Session terminated. Returning to login screen.", 'error')
         self.root.after(0, lambda: self._build_login_screen(
             "❌ Disconnected: Bank server offline or connection lost"))
 
@@ -524,8 +522,8 @@ class ATMClientGUI:
 
         threading.Thread(target=_run, daemon=True).start()
 
-    def _do_deposit(self):
-        """Handle deposit."""
+    def _do_amount_transaction(self, action, verb):
+        """Handle a deposit or withdrawal transaction."""
         amount = self.amount_entry.get().strip()
         if not amount:
             self.result_label.config(text="Enter an amount", fg='#f85149')
@@ -537,11 +535,11 @@ class ATMClientGUI:
             return
 
         def _run():
-            status, data = self._send_transaction("DEPOSIT", amount)
+            status, data = self._send_transaction(action, amount)
             if status == "OK":
                 self.root.after(0, lambda: [
                     self.result_label.config(
-                        text=f"Deposited ${amount}\nNew Balance: ${data}", fg='#3fb950'),
+                        text=f"{verb} ${amount}\nNew Balance: ${data}", fg='#3fb950'),
                     self.amount_entry.delete(0, tk.END)
                 ])
             else:
@@ -549,32 +547,14 @@ class ATMClientGUI:
                     text=f"Error: {data}", fg='#f85149'))
 
         threading.Thread(target=_run, daemon=True).start()
+
+    def _do_deposit(self):
+        """Handle deposit."""
+        self._do_amount_transaction("DEPOSIT", "Deposited")
 
     def _do_withdraw(self):
         """Handle withdrawal."""
-        amount = self.amount_entry.get().strip()
-        if not amount:
-            self.result_label.config(text="Enter an amount", fg='#f85149')
-            return
-        try:
-            float(amount)
-        except ValueError:
-            self.result_label.config(text="Invalid amount", fg='#f85149')
-            return
-
-        def _run():
-            status, data = self._send_transaction("WITHDRAW", amount)
-            if status == "OK":
-                self.root.after(0, lambda: [
-                    self.result_label.config(
-                        text=f"Withdrew ${amount}\nNew Balance: ${data}", fg='#3fb950'),
-                    self.amount_entry.delete(0, tk.END)
-                ])
-            else:
-                self.root.after(0, lambda: self.result_label.config(
-                    text=f"Error: {data}", fg='#f85149'))
-
-        threading.Thread(target=_run, daemon=True).start()
+        self._do_amount_transaction("WITHDRAW", "Withdrew")
 
     def _do_logout(self):
         """Handle logout."""

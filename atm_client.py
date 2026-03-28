@@ -74,6 +74,7 @@ class ATMClientGUI:
         self.k_enc = None
         self.k_mac = None
         self.authenticated = False
+        self.txn_lock = threading.Lock()
 
         self._build_login_screen()
 
@@ -454,11 +455,14 @@ class ATMClientGUI:
             self._proto_log(f"→ Sending: {action} {data}", 'txn')
             self._proto_log(f"  Encrypted payload: {len(encrypted_request)} bytes", 'crypto')
 
-            # Send the request
-            send_data(self.sock, encrypted_request)
+            # Acquire lock to prevent concurrent socket access from multiple transaction threads (deposit/withdraw/balance).
+            with self.txn_lock:
+                # Send the request
+                send_data(self.sock, encrypted_request)
 
-            # Receive and decrypt the response
-            raw_response = recv_data(self.sock)
+                # Receive and decrypt the response
+                raw_response = recv_data(self.sock)
+
             if raw_response is None:
                 self._proto_log("Connection lost!", 'error')
                 return None, "Connection lost"

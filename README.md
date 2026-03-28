@@ -6,9 +6,9 @@ A secure banking system with one bank server and three ATM clients, built for th
 
 - **3-Step Mutual Authentication** using pre-shared symmetric keys and nonces
 - **HKDF Key Derivation** — Master Secret → `K_enc` (encryption) + `K_mac` (MAC)
+- **Hardened Replay Protection** — Combines 60-second timestamp verification with a `thread-safe MAC Cache` on the server to prevent any intercepted message from being re-processed.
 - **Encrypted Transactions** — AES-CBC with Encrypt-then-MAC (HMAC-SHA256)
 - **Encrypted Audit Log** — all actions logged with `[Customer ID | Action | Timestamp]` format, encrypted at rest
-- **Replay Attack Prevention** — timestamp verification on all transaction messages
 - **Tkinter GUIs** — graphical interfaces for both the bank server and ATM clients
 - **Multi-threaded Server** — handles multiple ATM clients concurrently
 

@@ -17,7 +17,6 @@ Usage:
 """
 
 import os
-import sys
 import json
 import socket
 import threading
@@ -28,13 +27,12 @@ from tkinter import ttk, scrolledtext, messagebox
 
 from crypto_utils import (
     aes_encrypt, aes_decrypt,
-    compute_hmac, verify_hmac,
     generate_nonce, generate_master_secret, derive_keys,
-    hash_password, generate_symmetric_key,
+    hash_password,
     encrypt_and_mac, decrypt_and_verify,
     pack_fields, unpack_fields,
     send_data, recv_data,
-    generate_timestamp, verify_timestamp,
+    verify_timestamp,
     bytes_to_hex, print_separator
 )
 

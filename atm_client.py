@@ -82,7 +82,7 @@ class ATMClientGUI:
     # LOGIN SCREEN
     # ===========================================================
 
-    def _build_login_screen(self):
+    def _build_login_screen(self, message=""):
         """Build the login UI."""
         # Clear any existing widgets
         for widget in self.root.winfo_children():
@@ -139,6 +139,10 @@ class ATMClientGUI:
         self.login_status = tk.Label(container, text="",
             font=('Consolas', 10), bg='#0d1117', fg='#f85149')
         self.login_status.pack(pady=(15, 0))
+
+        if message:
+            color = '#3fb950' if message.startswith('✅') else '#f85149'
+            self.login_status.config(text=message, fg=color)
 
         # Hint
         tk.Label(container, text="Default accounts: alice/hello, bob/password, charlie/charlie123",
@@ -464,8 +468,9 @@ class ATMClientGUI:
                 raw_response = recv_data(self.sock)
 
             if raw_response is None:
-                self._proto_log("Connection lost!", 'error')
-                return None, "Connection lost"
+                self._proto_log("Server closed the connection.", 'error')
+                self._handle_disconnect()
+                return None, "Connection to bank server lost."
 
             response_plaintext = decrypt_and_verify(self.k_enc, self.k_mac, raw_response)
             status, response_data = unpack_fields(response_plaintext, 2)
@@ -478,12 +483,33 @@ class ATMClientGUI:
 
             return status_str, data_str
 
+        except (ConnectionResetError, BrokenPipeError,
+                ConnectionAbortedError, EOFError, OSError) as e:
+            self._proto_log(f"Network error: {e}", 'error')
+            self._handle_disconnect()
+            return None, "Connection to bank server lost."
         except ValueError as e:
             self._proto_log(f"MAC VERIFICATION FAILED: {e}", 'error')
             return None, "Data integrity compromised!"
         except Exception as e:
             self._proto_log(f"Error: {e}", 'error')
             return None, str(e)
+
+    def _handle_disconnect(self):
+        """Clean up client state after a network disconnect and return to login."""
+        if self.sock:
+            try:
+                self.sock.close()
+            except Exception:
+                pass
+        self.sock = None
+        self.authenticated = False
+        self.k_enc = None
+        self.k_mac = None
+        self.username = None
+        self._proto_log("Session terminated. Returning to login screen.", 'error')
+        self.root.after(0, lambda: self._build_login_screen(
+            "❌ Disconnected: Bank server offline or connection lost"))
 
     def _do_balance(self):
         """Handle balance inquiry."""
@@ -568,7 +594,8 @@ class ATMClientGUI:
                 self.k_enc = None
                 self.k_mac = None
                 self.username = None
-                self.root.after(0, self._build_login_screen)
+                self.root.after(0, lambda: self._build_login_screen(
+                    "✅ Logged out successfully"))
 
         threading.Thread(target=_run, daemon=True).start()
 

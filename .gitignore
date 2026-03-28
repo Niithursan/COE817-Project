@@ -1,0 +1,12 @@
+# Python bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Project specific runtime files
+audit_log.enc
+hashes.txt
+
+# OS generated files
+.DS_Store
+Thumbs.db

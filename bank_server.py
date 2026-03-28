@@ -245,7 +245,7 @@ class AuditLog:
 # Client Handler (runs in a separate thread per ATM)
 # ============================================================
 
-def handle_atm_client(conn, addr, account_mgr, audit_log, gui_callback):
+def handle_atm_client(conn, addr, account_mgr, audit_log, gui_callback, client_count_callback):
     """
     Handle a single ATM client connection through all phases:
       Phase 1: Mutual authentication (3-step protocol)
@@ -258,7 +258,9 @@ def handle_atm_client(conn, addr, account_mgr, audit_log, gui_callback):
         account_mgr: AccountManager instance
         audit_log: AuditLog instance
         gui_callback: function to update the server GUI
+        client_count_callback: function to increment/decrement active client count
     """
+    client_count_callback(1)
     username = None
     k_enc = None
     k_mac = None
@@ -515,6 +517,7 @@ def handle_atm_client(conn, addr, account_mgr, audit_log, gui_callback):
             audit_log.log(username, f"ERROR — {e}", gui_callback)
     finally:
         conn.close()
+        client_count_callback(-1)
 
 
 # ============================================================
@@ -533,6 +536,8 @@ class BankServerGUI:
 
         self.server_socket = None
         self.running = False
+        self.active_clients = 0
+        self.client_lock = threading.Lock()
         self.account_mgr = AccountManager(ACCOUNTS_FILE)
         self.audit_log = AuditLog(AUDIT_LOG_FILE, AUDIT_KEY)
 
@@ -570,7 +575,7 @@ class BankServerGUI:
         self.status_label.pack(side=tk.LEFT)
 
         self.client_count_label = ttk.Label(status_frame,
-            text="Connected clients: 0",
+            text="Active connections: 0",
             style='Info.TLabel')
         self.client_count_label.pack(side=tk.RIGHT)
 
@@ -731,6 +736,14 @@ class BankServerGUI:
         server_thread = threading.Thread(target=self._server_loop, daemon=True)
         server_thread.start()
 
+    def update_client_count(self, delta):
+        """Thread-safe update of the active client connection count."""
+        with self.client_lock:
+            self.active_clients += delta
+            count = self.active_clients
+        self.root.after(0, lambda:
+            self.client_count_label.config(text=f"Active connections: {count}"))
+
     def _server_loop(self):
         """Main server loop — accept connections and spawn handler threads."""
         self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -748,21 +761,15 @@ class BankServerGUI:
         self._log(f"[INFO] Server started — listening on {HOST}:{PORT}")
         self._log(f"[INFO] Waiting for ATM client connections...")
 
-        client_count = 0
-
         while self.running:
             try:
                 conn, addr = self.server_socket.accept()
-                client_count += 1
-
-                # Update client count on GUI
-                self.root.after(0, lambda c=client_count:
-                    self.client_count_label.config(text=f"Total connections: {c}"))
 
                 # Spawn a handler thread for this ATM client
                 handler = threading.Thread(
                     target=handle_atm_client,
-                    args=(conn, addr, self.account_mgr, self.audit_log, self._log),
+                    args=(conn, addr, self.account_mgr, self.audit_log,
+                          self._log, self.update_client_count),
                     daemon=True
                 )
                 handler.start()

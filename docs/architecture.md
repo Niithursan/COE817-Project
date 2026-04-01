@@ -6,14 +6,14 @@ This document describes the system modules, responsibilities, and how they inter
 
 ```mermaid
 graph TD
-  A1[ATM Client (Tkinter)\n atm_client.py] -->|TCP 127.0.0.1:5000\nlength-prefixed frames| S[Bank Server (Tkinter)\n bank_server.py]
-  A2[ATM Client #2] --> S
-  A3[ATM Client #3] --> S
+  A1["ATM Client (Tkinter)<br/>atm_client.py"] -->|TCP 127.0.0.1:5000<br/>length-prefixed frames| S["Bank Server (Tkinter)<br/>bank_server.py"]
+  A2["ATM Client #2"] -->|TCP| S
+  A3["ATM Client #3"] -->|TCP| S
 
-  S --> ACC[AccountManager\naccounts.json]
-  S --> AUD[AuditLog\n audit_log.enc (encrypted)]
-  S --> RC[ReplayCache\n(duplicate MAC detection)]
-  A1 --> CU[crypto_utils.py]
+  S --> ACC["AccountManager<br/>accounts.json"]
+  S --> AUD["AuditLog<br/>audit_log.enc (encrypted)"]
+  S --> RC["ReplayCache<br/>duplicate MAC detection"]
+  A1 --> CU["crypto_utils.py"]
   S --> CU
 ```
 

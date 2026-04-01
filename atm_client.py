@@ -179,13 +179,13 @@ class ATMClientGUI:
             password_hash = hash_password(password)
 
             # STEP 1: send E(K_ps, [password_hash, N_atm]) + username
-            n_atm = generate_nonce(16)
+            n_atm = generate_nonce(16) # Generate Nonce
 
             auth_plaintext = pack_fields(
-                password_hash.encode('utf-8'),
-                n_atm
+                password_hash.encode('utf-8'), # Hash Password
+                n_atm # Nonce
             )
-            auth_ciphertext = aes_encrypt(psk, auth_plaintext)
+            auth_ciphertext = aes_encrypt(psk, auth_plaintext) # Encrypt with Shared Key
 
             # send encrypted auth request first, then username in plaintext
             send_data(self.sock, auth_ciphertext)
@@ -194,7 +194,11 @@ class ATMClientGUI:
             self._update_login_status("Step 1: Sent credentials + nonce", '#58a6ff')
 
             # STEP 2: receive E(K_ps, [N_atm, N_bank, "AUTH_OK"])
+            
+            # Receive Encrypted Data
             response_data = recv_data(self.sock)
+            
+            # Check if Connection is lost
             if response_data is None:
                 self._auth_failed("Connection lost")
                 return
@@ -223,15 +227,25 @@ class ATMClientGUI:
 
             self._update_login_status("Step 2: Bank authenticated ✓", '#3fb950')
 
-            # STEP 3: Send E(K_ps, [N_bank]) to prove we have the PSK
+            # STEP 3: Send E(K_ps, [N_bank]) to prove we have the PSK 
+
+            # Pack the Nonce
             step3_plaintext = pack_fields(n_bank)
+            
+            # Encrypt with Shared Key
             step3_ciphertext = aes_encrypt(psk, step3_plaintext)
-            send_data(self.sock, step3_ciphertext)
+            
+            # Send Encrypted Data 
+            send_data(self.sock, step3_ciphertext) 
 
             self._update_login_status("Step 3: Mutual auth complete ✓", '#3fb950')
 
             # KEY DERIVATION
+            
+            # Generate Master Secret using PSK & Nonces
             master_secret = generate_master_secret(psk, n_atm, n_bank)
+            
+            # Derive Encryption and MAC keys
             self.k_enc, self.k_mac = derive_keys(master_secret)
 
             # wait for server's key confirmation
@@ -249,7 +263,7 @@ class ATMClientGUI:
                 self._auth_failed("Key confirmation MAC failed")
                 return
 
-            # authentication successful!
+            # authentication successful
             self.username = username
             self.authenticated = True
 
@@ -418,7 +432,7 @@ class ATMClientGUI:
 
         try:
             # build and encrypt the request
-            timestamp = generate_timestamp()
+            timestamp = generate_timestamp() # Generate Timestamp
             request_plaintext = pack_fields(
                 action.encode('utf-8'),
                 data.encode('utf-8'),
@@ -442,8 +456,8 @@ class ATMClientGUI:
                 self._handle_disconnect()
                 return None, "Connection to bank server lost."
 
-            response_plaintext = decrypt_and_verify(self.k_enc, self.k_mac, raw_response)
-            status, response_data = unpack_fields(response_plaintext, 2)
+            response_plaintext = decrypt_and_verify(self.k_enc, self.k_mac, raw_response) # Checks MAC then decrypts
+            status, response_data = unpack_fields(response_plaintext, 2) # Unpack the response
 
             status_str = status.decode('utf-8')
             data_str = response_data.decode('utf-8')

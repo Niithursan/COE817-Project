@@ -42,7 +42,6 @@ AUDIT_LOG_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'audit
 # server-side key for encrypting the audit log file
 AUDIT_KEY = bytes.fromhex('0123456789abcdef0123456789abcdef')
 
-
 # replay attack prevention (MAC Cache)
 class ReplayCache:
     """
@@ -63,6 +62,7 @@ class ReplayCache:
         for k in stale_keys:
             del self._cache[k]
 
+    # Checks if the MAC is new. Addition to replay attack prevention
     def check_and_add(self, mac_bytes):
         """Return True if the MAC is new (and record it).  False if duplicate."""
         mac_hex = mac_bytes.hex()
@@ -171,15 +171,16 @@ class AuditLog:
         Format: [ Customer ID | Action | Timestamp ]
         The entry is encrypted with the audit key before appending to file.
         """
+        # Gets the current time
         timestamp = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         entry = f"[ {customer_id} | {action} | {timestamp} ]"
 
-        # encrypt the entry
+        # encrypt the entry using AES
         encrypted_entry = aes_encrypt(self.key, entry.encode('utf-8'))
 
+        # write encrypted entry, Lock to ensure thread safety
         with self.lock:
             with open(self.filepath, 'ab') as f:
-                # write length-prefixed encrypted entry
                 length_bytes = len(encrypted_entry).to_bytes(4, 'big')
                 f.write(length_bytes + encrypted_entry)
 
@@ -192,6 +193,7 @@ class AuditLog:
         Read and decrypt all audit log entries.
         """
         entries = []
+        # if the file doesn't exist, return empty list
         if not os.path.exists(self.filepath):
             return entries
 
@@ -199,16 +201,21 @@ class AuditLog:
             with open(self.filepath, 'rb') as f:
                 data = f.read()
 
+        # read and decrypt each entry
         offset = 0
         while offset < len(data):
+            # if there are less than 4 bytes left, break
             if offset + 4 > len(data):
                 break
             entry_len = int.from_bytes(data[offset:offset+4], 'big')
             offset += 4
+            # if there are less than entry_len bytes left, break
             if offset + entry_len > len(data):
                 break
+            # extract the encrypted entry
             encrypted_entry = data[offset:offset+entry_len]
             offset += entry_len
+            # decrypt the entry
             try:
                 decrypted = aes_decrypt(self.key, encrypted_entry)
                 entries.append(decrypted.decode('utf-8'))
@@ -274,10 +281,10 @@ def handle_atm_client(conn, addr, account_mgr, audit_log, gui_callback, client_c
 
         # decrypt the authentication request using the pre-shared key
         try:
-            auth_plaintext = aes_decrypt(psk, auth_request)
-            fields = unpack_fields(auth_plaintext, 2)
-            received_password_hash = fields[0].decode('utf-8')
-            n_atm = fields[1]
+            auth_plaintext = aes_decrypt(psk, auth_request) # decrypt the authentication request
+            fields = unpack_fields(auth_plaintext, 2) # unpack the fields
+            received_password_hash = fields[0].decode('utf-8') # get the password hash
+            n_atm = fields[1] # get the nonce
         except Exception as e:
             gui_callback(f"[AUTH] FAILED — Decryption error for {username}: {e}")
             send_data(conn, b"AUTH_FAIL")
@@ -297,12 +304,12 @@ def handle_atm_client(conn, addr, account_mgr, audit_log, gui_callback, client_c
         # Step 2: Send E(K_ps, [N_atm, N_bank, "AUTH_OK"])
         # This authenticates the customer to the bank (we verified their password)
         # and provides mutual authentication material (bank's nonce)
-        n_bank = generate_nonce(16)
+        n_bank = generate_nonce(16) # generate a nonce for the bank
         gui_callback(f"[AUTH] Generated N_bank: {bytes_to_hex(n_bank)}")
 
-        auth_response = pack_fields(n_atm, n_bank, b"AUTH_OK")
-        encrypted_response = aes_encrypt(psk, auth_response)
-        send_data(conn, encrypted_response)
+        auth_response = pack_fields(n_atm, n_bank, b"AUTH_OK") # pack the fields
+        encrypted_response = aes_encrypt(psk, auth_response) # encrypt the response
+        send_data(conn, encrypted_response) # send the response
         gui_callback(f"[AUTH] Sent auth response: E(K_ps, [N_atm, N_bank, AUTH_OK])")
 
         # Step 3: Receive E(K_ps, [N_bank])
@@ -314,8 +321,8 @@ def handle_atm_client(conn, addr, account_mgr, audit_log, gui_callback, client_c
             return
 
         try:
-            step3_plaintext = aes_decrypt(psk, step3_data)
-            returned_n_bank = unpack_fields(step3_plaintext, 1)[0]
+            step3_plaintext = aes_decrypt(psk, step3_data) # decrypt the step 3 data
+            returned_n_bank = unpack_fields(step3_plaintext, 1)[0] # unpack the fields
         except Exception as e:
             gui_callback(f"[AUTH] FAILED — Step 3 decryption error: {e}")
             conn.close()
@@ -336,16 +343,16 @@ def handle_atm_client(conn, addr, account_mgr, audit_log, gui_callback, client_c
         # - Master Secret = HMAC(K_ps, N_atm || N_bank)
         # - K_enc, K_mac = derive_keys(Master Secret)
 
-        master_secret = generate_master_secret(psk, n_atm, n_bank)
-        k_enc, k_mac = derive_keys(master_secret)
+        master_secret = generate_master_secret(psk, n_atm, n_bank) # generate the master secret
+        k_enc, k_mac = derive_keys(master_secret) # derive the keys
 
         gui_callback(f"[KEYS] Master Secret: {bytes_to_hex(master_secret)}")
         gui_callback(f"[KEYS] K_enc: {bytes_to_hex(k_enc)}")
         gui_callback(f"[KEYS] K_mac: {bytes_to_hex(k_mac)}")
 
         # send confirmation that keys are ready (encrypted with new keys)
-        confirm_msg = encrypt_and_mac(k_enc, k_mac, b"KEYS_READY")
-        send_data(conn, confirm_msg)
+        confirm_msg = encrypt_and_mac(k_enc, k_mac, b"KEYS_READY") # encrypt the confirmation message
+        send_data(conn, confirm_msg) # send the confirmation message
         gui_callback(f"[KEYS] Sent encrypted key confirmation to {username}")
 
         # PHASE 3: Transaction Processing Loop

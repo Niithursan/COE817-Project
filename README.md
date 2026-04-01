@@ -181,10 +181,17 @@ The server GUI supports decrypting and viewing the audit log for demo.
 
 ## UI Gallery
 
-- ATM Login: `docs/gallery/atm-login.png`
-- ATM Transactions: `docs/gallery/atm-transactions.png`
-- Bank Server UI: `docs/gallery/server-ui.png`
-- Audit Log Viewer: `docs/gallery/audit-log.png`
+### ATM Login
+![ATM Login](docs/gallery/atm-login.png)
+
+### ATM Transactions
+![ATM Transactions](docs/gallery/atm-transactions.png)
+
+### Bank Server UI
+![Bank Server UI](docs/gallery/server-ui.png)
+
+### Audit Log Viewer
+![Audit Log Viewer](docs/gallery/audit-log.png)
 
 ---
 

@@ -75,9 +75,9 @@ graph TD
   A2[ATM Client #2] -->|TCP| S
   A3[ATM Client #3] -->|TCP| S
 
-  S --> AM[AccountManager\n(accounts.json)]
-  S --> AL[AuditLog\n(audit_log.enc)]
-  S --> CU[crypto_utils.py\n(AES-CBC, HMAC, KDF, framing)]
+  S --> AM[AccountManager<br/>accounts.json]
+  S --> AL[AuditLog<br/>audit_log.enc]
+  S --> CU[crypto_utils.py<br/>AES-CBC, HMAC, KDF, framing]
 ```
 
 ---

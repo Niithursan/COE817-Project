@@ -1,6 +1,6 @@
 """
-bank_server.py - Secure Bank Server for COE817 Project
-========================================================
+Secure Bank Server for COE817 Project
+
 Multi-threaded bank server with Tkinter GUI that handles ATM client
 connections, mutual authentication, and encrypted banking transactions.
 
@@ -11,9 +11,6 @@ Architecture:
   - HKDF key derivation: Master Secret -> K_enc + K_mac
   - All transactions encrypted (AES-CBC) and MAC-protected (HMAC-SHA256)
   - Encrypted audit log stored in audit_log.enc
-
-Usage:
-  python bank_server.py
 """
 
 import os
@@ -36,37 +33,31 @@ from crypto_utils import (
     bytes_to_hex, print_separator
 )
 
-# ============================================================
-# Configuration
-# ============================================================
+# configuration
 HOST = '127.0.0.1'
 PORT = 5000
 ACCOUNTS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'accounts.json')
 AUDIT_LOG_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'audit_log.enc')
 
-# Server-side key for encrypting the audit log file
-# In production this would be stored in a secure key vault
+# server-side key for encrypting the audit log file
 AUDIT_KEY = bytes.fromhex('0123456789abcdef0123456789abcdef')
 
 
-# ============================================================
-# Replay Attack Prevention (MAC Cache)
-# ============================================================
-
+# replay attack prevention (MAC Cache)
 class ReplayCache:
-    """Thread-safe cache of recently seen MACs to prevent replay attacks.
-
+    """
+    Thread-safe cache of recently seen MACs to prevent replay attacks.
     Even within the 60-second timestamp window, each unique MAC may only
     be processed once.  Stale entries are purged automatically.
     """
 
     def __init__(self, ttl_seconds=60):
-        self._cache = {}            # mac_hex -> timestamp (float)
+        self._cache = {}
         self._lock = threading.Lock()
         self._ttl = ttl_seconds
 
     def _purge_stale(self):
-        """Remove entries older than the TTL.  Must be called with lock held."""
+        """Remove entries older than the TTL."""
         cutoff = time.time() - self._ttl
         stale_keys = [k for k, ts in self._cache.items() if ts < cutoff]
         for k in stale_keys:
@@ -86,10 +77,7 @@ class ReplayCache:
 replay_cache = ReplayCache(ttl_seconds=60)
 
 
-# ============================================================
-# Account Management
-# ============================================================
-
+# account Management
 class AccountManager:
     """Thread-safe account manager backed by a JSON file."""
 
@@ -111,12 +99,7 @@ class AccountManager:
             json.dump(self.accounts, f, indent=4)
 
     def authenticate(self, username, password_hash):
-        """
-        Verify username and password hash.
-
-        Returns:
-            True if credentials match, False otherwise
-        """
+        """Verify username and password hash."""
         with self.lock:
             if username not in self.accounts:
                 return False
@@ -172,10 +155,7 @@ class AccountManager:
             return True
 
 
-# ============================================================
-# Encrypted Audit Log
-# ============================================================
-
+# encrypted audit log
 class AuditLog:
     """Encrypted audit log — all entries are AES-encrypted before storage."""
 
@@ -194,25 +174,22 @@ class AuditLog:
         timestamp = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         entry = f"[ {customer_id} | {action} | {timestamp} ]"
 
-        # Encrypt the entry
+        # encrypt the entry
         encrypted_entry = aes_encrypt(self.key, entry.encode('utf-8'))
 
         with self.lock:
             with open(self.filepath, 'ab') as f:
-                # Write length-prefixed encrypted entry
+                # write length-prefixed encrypted entry
                 length_bytes = len(encrypted_entry).to_bytes(4, 'big')
                 f.write(length_bytes + encrypted_entry)
 
-        # Notify GUI
+        # notify GUI
         if gui_callback:
             gui_callback(entry)
 
     def read_all(self):
         """
         Read and decrypt all audit log entries.
-
-        Returns:
-            List of decrypted log entry strings
         """
         entries = []
         if not os.path.exists(self.filepath):
@@ -241,10 +218,7 @@ class AuditLog:
         return entries
 
 
-# ============================================================
-# Client Handler (runs in a separate thread per ATM)
-# ============================================================
-
+# client handler (runs in a separate thread per ATM)
 def handle_atm_client(conn, addr, account_mgr, audit_log, gui_callback, client_count_callback):
     """
     Handle a single ATM client connection through all phases:
@@ -252,7 +226,7 @@ def handle_atm_client(conn, addr, account_mgr, audit_log, gui_callback, client_c
       Phase 2: Key derivation
       Phase 3: Transaction processing loop
 
-    Args:
+    Arguments:
         conn: socket connection to the ATM
         addr: client address tuple
         account_mgr: AccountManager instance
@@ -268,9 +242,8 @@ def handle_atm_client(conn, addr, account_mgr, audit_log, gui_callback, client_c
     try:
         gui_callback(f"[CONNECT] ATM connected from {addr[0]}:{addr[1]}")
 
-        # ==========================================================
         # PHASE 1: Mutual Authentication Protocol (3 steps)
-        # ==========================================================
+
         # Step 1: Receive E(K_ps, [username, password_hash, N_atm])
         # The ATM sends credentials + a nonce, encrypted with the
         # pre-shared key. We try all known PSKs to find the matching user.
@@ -281,7 +254,7 @@ def handle_atm_client(conn, addr, account_mgr, audit_log, gui_callback, client_c
             conn.close()
             return
 
-        # The ATM first sends the username in plaintext so we can look up the PSK
+        # the ATM first sends the username in plaintext so we can look up the PSK
         username_bytes = recv_data(conn)
         if username_bytes is None:
             gui_callback(f"[ERROR] No username received from {addr}")
@@ -291,7 +264,7 @@ def handle_atm_client(conn, addr, account_mgr, audit_log, gui_callback, client_c
         username = username_bytes.decode('utf-8')
         gui_callback(f"[AUTH] Received login attempt from user: {username}")
 
-        # Look up the pre-shared key for this user
+        # look up the pre-shared key for this user
         psk = account_mgr.get_pre_shared_key(username)
         if psk is None:
             gui_callback(f"[AUTH] FAILED — Unknown user: {username}")
@@ -299,7 +272,7 @@ def handle_atm_client(conn, addr, account_mgr, audit_log, gui_callback, client_c
             conn.close()
             return
 
-        # Decrypt the authentication request using the pre-shared key
+        # decrypt the authentication request using the pre-shared key
         try:
             auth_plaintext = aes_decrypt(psk, auth_request)
             fields = unpack_fields(auth_plaintext, 2)
@@ -311,7 +284,7 @@ def handle_atm_client(conn, addr, account_mgr, audit_log, gui_callback, client_c
             conn.close()
             return
 
-        # Verify the password
+        # verify the password
         if not account_mgr.authenticate(username, received_password_hash):
             gui_callback(f"[AUTH] FAILED — Invalid password for {username}")
             send_data(conn, b"AUTH_FAIL")
@@ -357,12 +330,11 @@ def handle_atm_client(conn, addr, account_mgr, audit_log, gui_callback, client_c
         gui_callback(f"[AUTH] Mutual authentication SUCCESSFUL for {username}")
         audit_log.log(username, "LOGIN — Authentication successful", gui_callback)
 
-        # ==========================================================
         # PHASE 2: Key Derivation
-        # ==========================================================
+
         # Both sides independently compute:
-        #   Master Secret = HMAC(K_ps, N_atm || N_bank)
-        #   K_enc, K_mac = derive_keys(Master Secret)
+        # - Master Secret = HMAC(K_ps, N_atm || N_bank)
+        # - K_enc, K_mac = derive_keys(Master Secret)
 
         master_secret = generate_master_secret(psk, n_atm, n_bank)
         k_enc, k_mac = derive_keys(master_secret)
@@ -371,25 +343,23 @@ def handle_atm_client(conn, addr, account_mgr, audit_log, gui_callback, client_c
         gui_callback(f"[KEYS] K_enc: {bytes_to_hex(k_enc)}")
         gui_callback(f"[KEYS] K_mac: {bytes_to_hex(k_mac)}")
 
-        # Send confirmation that keys are ready (encrypted with new keys)
+        # send confirmation that keys are ready (encrypted with new keys)
         confirm_msg = encrypt_and_mac(k_enc, k_mac, b"KEYS_READY")
         send_data(conn, confirm_msg)
         gui_callback(f"[KEYS] Sent encrypted key confirmation to {username}")
 
-        # ==========================================================
         # PHASE 3: Transaction Processing Loop
-        # ==========================================================
         gui_callback(f"[SESSION] Transaction session active for {username}")
 
         while True:
-            # Receive encrypted transaction request
+            # receive encrypted transaction request
             raw_request = recv_data(conn)
             if raw_request is None:
                 gui_callback(f"[SESSION] {username} disconnected")
                 audit_log.log(username, "LOGOUT — Client disconnected", gui_callback)
                 break
 
-            # Decrypt and verify MAC
+            # decrypt and verify MAC
             try:
                 request_plaintext = decrypt_and_verify(k_enc, k_mac, raw_request)
             except ValueError as e:
@@ -401,8 +371,7 @@ def handle_atm_client(conn, addr, account_mgr, audit_log, gui_callback, client_c
                 continue
 
             # --- Replay attack detection (duplicate MAC check) ---
-            # Extract the MAC tag from the raw request (last field in the
-            # packed [ciphertext, mac] structure).
+            # extract the MAC tag from the raw request (last field in the packed [ciphertext, mac] structure).
             _, request_mac = unpack_fields(raw_request, 2)
             if not replay_cache.check_and_add(request_mac):
                 gui_callback(f"[SECURITY] Replay attack detected from {username}! (Duplicate MAC)")
@@ -414,7 +383,7 @@ def handle_atm_client(conn, addr, account_mgr, audit_log, gui_callback, client_c
                 send_data(conn, error_response)
                 continue
 
-            # Unpack: [action, data, timestamp]
+            # unpack: [action, data, timestamp]
             try:
                 action_bytes, data_bytes, ts_bytes = unpack_fields(request_plaintext, 3)
             except Exception:
@@ -432,7 +401,7 @@ def handle_atm_client(conn, addr, account_mgr, audit_log, gui_callback, client_c
                 send_data(conn, error_response)
                 continue
 
-            # Process the transaction
+            # process the transaction
             response_status = b"OK"
             response_data = b""
 
@@ -502,7 +471,7 @@ def handle_atm_client(conn, addr, account_mgr, audit_log, gui_callback, client_c
                 response_data = f"Unknown action: {action}".encode('utf-8')
                 gui_callback(f"[TXN] {username}: Unknown action '{action}'")
 
-            # Send encrypted response
+            # send encrypted response
             response = encrypt_and_mac(k_enc, k_mac,
                 pack_fields(response_status, response_data))
             send_data(conn, response)
@@ -520,12 +489,9 @@ def handle_atm_client(conn, addr, account_mgr, audit_log, gui_callback, client_c
         client_count_callback(-1)
 
 
-# ============================================================
-# Server GUI (Tkinter)
-# ============================================================
-
+# server GUI (Tkinter)
 class BankServerGUI:
-    """Tkinter GUI for the bank server — shows activity log and audit viewer."""
+    """Tkinter GUI for the bank server."""
 
     def __init__(self):
         self.root = tk.Tk()
@@ -549,7 +515,7 @@ class BankServerGUI:
         style = ttk.Style()
         style.theme_use('clam')
 
-        # Configure styles
+        # configure styles
         style.configure('Title.TLabel', background='#1a1a2e', foreground='#e94560',
                         font=('Consolas', 18, 'bold'))
         style.configure('Status.TLabel', background='#1a1a2e', foreground='#0f3460',
@@ -594,7 +560,7 @@ class BankServerGUI:
         self.log_text.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
         self.log_text.config(state=tk.DISABLED)
 
-        # Configure log text tags for colored output
+        # configure log text tags for colored output
         self.log_text.tag_config('connect', foreground='#58a6ff')
         self.log_text.tag_config('auth', foreground='#f0883e')
         self.log_text.tag_config('keys', foreground='#a371f7')
@@ -655,7 +621,7 @@ class BankServerGUI:
         def _update():
             self.log_text.config(state=tk.NORMAL)
 
-            # Determine tag based on message prefix
+            # determine tag based on message prefix
             tag = 'info'
             if '[CONNECT]' in message:
                 tag = 'connect'
@@ -756,7 +722,7 @@ class BankServerGUI:
             return
 
         self.server_socket.listen(5)
-        self.server_socket.settimeout(1.0)  # Allow periodic checking of self.running
+        self.server_socket.settimeout(1.0)  # allow periodic checking of self.running
 
         self._log(f"[INFO] Server started — listening on {HOST}:{PORT}")
         self._log(f"[INFO] Waiting for ATM client connections...")
@@ -765,7 +731,7 @@ class BankServerGUI:
             try:
                 conn, addr = self.server_socket.accept()
 
-                # Spawn a handler thread for this ATM client
+                # spawn a handler thread for this ATM client
                 handler = threading.Thread(
                     target=handle_atm_client,
                     args=(conn, addr, self.account_mgr, self.audit_log,
@@ -780,7 +746,7 @@ class BankServerGUI:
                 break
 
     def on_close(self):
-        """Clean shutdown."""
+        """clean shutdown."""
         self.running = False
         if self.server_socket:
             try:
@@ -790,14 +756,11 @@ class BankServerGUI:
         self.root.destroy()
 
     def run(self):
-        """Start the Tkinter event loop."""
+        """start the Tkinter event loop."""
         self.root.mainloop()
 
 
-# ============================================================
-# Main Entry Point
-# ============================================================
-
+# main Entry Point
 if __name__ == '__main__':
     print_separator("COE817 SECURE BANK SERVER")
     print(f"  Starting server on {HOST}:{PORT}")

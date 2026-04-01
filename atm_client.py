@@ -1,10 +1,10 @@
 """
-atm_client.py - Secure ATM Client for COE817 Project
-======================================================
+Secure ATM Client for COE817 Project
+
 Tkinter-based ATM client that connects to the bank server, performs
 mutual authentication, and enables secure banking transactions.
 
-Protocol:
+Workflow:
   Phase 1 (Mutual Authentication):
     Step 1: ATM -> Bank: username (plaintext) + E(K_ps, [password_hash, N_atm])
     Step 2: Bank -> ATM: E(K_ps, [N_atm, N_bank, "AUTH_OK"])
@@ -18,9 +18,6 @@ Protocol:
   Phase 3 (Transactions):
     Request:  E(K_enc, [action, data, timestamp]) + MAC(K_mac, ciphertext)
     Response: E(K_enc, [status, data]) + MAC(K_mac, ciphertext)
-
-Usage:
-  python atm_client.py
 """
 
 import socket
@@ -39,24 +36,18 @@ from crypto_utils import (
     bytes_to_hex, print_separator
 )
 
-# ============================================================
-# Configuration
-# ============================================================
+# configuration
 HOST = '127.0.0.1'
 PORT = 5000
 
-# Pre-shared keys for each user (must match bank_server accounts.json)
+# pre-shared keys for each user
 PRE_SHARED_KEYS = {
     'alice':   bytes.fromhex('a1b2c3d4e5f60718a1b2c3d4e5f60718'),
     'bob':     bytes.fromhex('18071f6e5d4c3b2a18071f6e5d4c3b2a'),
     'charlie': bytes.fromhex('deadbeefcafe1234deadbeefcafe1234'),
 }
 
-
-# ============================================================
-# ATM Client GUI
-# ============================================================
-
+# ATM client GUI
 class ATMClientGUI:
     """Full ATM client with login screen, transaction screen, and protocol log."""
 
@@ -67,7 +58,7 @@ class ATMClientGUI:
         self.root.configure(bg='#0d1117')
         self.root.protocol("WM_DELETE_WINDOW", self.on_close)
 
-        # Connection state
+        # connection state
         self.sock = None
         self.username = None
         self.k_enc = None
@@ -77,23 +68,20 @@ class ATMClientGUI:
 
         self._build_login_screen()
 
-    # ===========================================================
     # LOGIN SCREEN
-    # ===========================================================
-
     def _build_login_screen(self, message=""):
         """Build the login UI."""
-        # Clear any existing widgets
+        # clear any existing widgets
         for widget in self.root.winfo_children():
             widget.destroy()
 
         self.root.configure(bg='#0d1117')
 
-        # Main container with centered content
+        # main container with centered content
         container = tk.Frame(self.root, bg='#0d1117')
         container.place(relx=0.5, rely=0.5, anchor='center')
 
-        # ATM Logo / Title
+        # ATM logo
         tk.Label(container, text="🏧", font=('Segoe UI Emoji', 48),
                  bg='#0d1117', fg='white').pack(pady=(0, 5))
 
@@ -105,7 +93,7 @@ class ATMClientGUI:
                  font=('Consolas', 10), bg='#0d1117',
                  fg='#8b949e').pack(pady=(0, 30))
 
-        # Login form frame
+        # login form frame
         form_frame = tk.Frame(container, bg='#161b22', padx=40, pady=30,
                               highlightbackground='#30363d', highlightthickness=1)
         form_frame.pack()
@@ -134,7 +122,7 @@ class ATMClientGUI:
             cursor='hand2', command=self._do_login)
         self.login_btn.pack(fill=tk.X)
 
-        # Status text
+        # status text
         self.login_status = tk.Label(container, text="",
             font=('Consolas', 10), bg='#0d1117', fg='#f85149')
         self.login_status.pack(pady=(15, 0))
@@ -143,11 +131,11 @@ class ATMClientGUI:
             color = '#3fb950' if message.startswith('✅') else '#f85149'
             self.login_status.config(text=message, fg=color)
 
-        # Hint
+        # hint
         tk.Label(container, text="Default accounts: alice/hello, bob/password, charlie/charlie123",
                  font=('Consolas', 9), bg='#0d1117', fg='#484f58').pack(pady=(10, 0))
 
-        # Bind Enter key
+        # bind enter key
         self.password_entry.bind('<Return>', lambda e: self._do_login())
         self.username_entry.bind('<Return>', lambda e: self.password_entry.focus())
         self.username_entry.focus()
@@ -169,7 +157,7 @@ class ATMClientGUI:
         self.login_status.config(text="Connecting to bank server...", fg='#58a6ff')
         self.root.update()
 
-        # Run authentication in a background thread
+        # run authentication in a background thread
         auth_thread = threading.Thread(
             target=self._authenticate,
             args=(username, password),
@@ -183,16 +171,14 @@ class ATMClientGUI:
         Called in a background thread.
         """
         try:
-            # Connect to the bank server
+            # connect to the bank server
             self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             self.sock.connect((HOST, PORT))
 
             psk = PRE_SHARED_KEYS[username]
             password_hash = hash_password(password)
 
-            # ====================================================
-            # STEP 1: Send E(K_ps, [password_hash, N_atm]) + username
-            # ====================================================
+            # STEP 1: send E(K_ps, [password_hash, N_atm]) + username
             n_atm = generate_nonce(16)
 
             auth_plaintext = pack_fields(
@@ -201,26 +187,24 @@ class ATMClientGUI:
             )
             auth_ciphertext = aes_encrypt(psk, auth_plaintext)
 
-            # Send encrypted auth request first, then username in plaintext
+            # send encrypted auth request first, then username in plaintext
             send_data(self.sock, auth_ciphertext)
             send_data(self.sock, username.encode('utf-8'))
 
             self._update_login_status("Step 1: Sent credentials + nonce", '#58a6ff')
 
-            # ====================================================
-            # STEP 2: Receive E(K_ps, [N_atm, N_bank, "AUTH_OK"])
-            # ====================================================
+            # STEP 2: receive E(K_ps, [N_atm, N_bank, "AUTH_OK"])
             response_data = recv_data(self.sock)
             if response_data is None:
                 self._auth_failed("Connection lost")
                 return
 
-            # Check for plaintext error response
+            # check for plaintext error response
             if response_data == b"AUTH_FAIL":
                 self._auth_failed("Authentication failed — invalid credentials")
                 return
 
-            # Decrypt the response with our PSK
+            # decrypt the response with our PSK
             try:
                 response_plaintext = aes_decrypt(psk, response_data)
                 returned_n_atm, n_bank, auth_status = unpack_fields(response_plaintext, 3)
@@ -228,7 +212,7 @@ class ATMClientGUI:
                 self._auth_failed(f"Decryption failed: {e}")
                 return
 
-            # Verify the bank returned our nonce correctly
+            # verify the bank returned our nonce correctly
             if returned_n_atm != n_atm:
                 self._auth_failed("Nonce mismatch — possible MITM attack!")
                 return
@@ -239,22 +223,18 @@ class ATMClientGUI:
 
             self._update_login_status("Step 2: Bank authenticated ✓", '#3fb950')
 
-            # ====================================================
             # STEP 3: Send E(K_ps, [N_bank]) to prove we have the PSK
-            # ====================================================
             step3_plaintext = pack_fields(n_bank)
             step3_ciphertext = aes_encrypt(psk, step3_plaintext)
             send_data(self.sock, step3_ciphertext)
 
             self._update_login_status("Step 3: Mutual auth complete ✓", '#3fb950')
 
-            # ====================================================
             # KEY DERIVATION
-            # ====================================================
             master_secret = generate_master_secret(psk, n_atm, n_bank)
             self.k_enc, self.k_mac = derive_keys(master_secret)
 
-            # Wait for server's key confirmation
+            # wait for server's key confirmation
             key_confirm = recv_data(self.sock)
             if key_confirm is None:
                 self._auth_failed("No key confirmation received")
@@ -269,13 +249,13 @@ class ATMClientGUI:
                 self._auth_failed("Key confirmation MAC failed")
                 return
 
-            # Authentication successful!
+            # authentication successful!
             self.username = username
             self.authenticated = True
 
             self._update_login_status("✅ Authenticated! Keys derived.", '#3fb950')
 
-            # Transition to transaction screen
+            # transition to transaction screen
             self.root.after(500, self._build_transaction_screen)
 
         except ConnectionRefusedError:
@@ -301,18 +281,16 @@ class ATMClientGUI:
         """Thread-safe status update."""
         self.root.after(0, lambda: self.login_status.config(text=text, fg=color))
 
-    # ===========================================================
-    # TRANSACTION SCREEN
-    # ===========================================================
 
+    # TRANSACTION SCREEN
     def _build_transaction_screen(self):
-        """Build the main banking transaction UI."""
+        """build the main banking transaction UI."""
         for widget in self.root.winfo_children():
             widget.destroy()
 
         self.root.configure(bg='#0d1117')
 
-        # --- Header ---
+        # Header
         header = tk.Frame(self.root, bg='#161b22', pady=12, padx=20)
         header.pack(fill=tk.X)
 
@@ -330,7 +308,7 @@ class ATMClientGUI:
             font=('Consolas', 9), bg='#161b22', fg='#3fb950')
         self.conn_status.pack(side=tk.RIGHT, padx=15)
 
-        # --- Main content ---
+        # Main content
         main = tk.Frame(self.root, bg='#0d1117')
         main.pack(fill=tk.BOTH, expand=True, padx=15, pady=10)
 
@@ -431,22 +409,15 @@ class ATMClientGUI:
         """
         Send an encrypted transaction to the bank server and return the response.
 
-        Protocol:
+        Workflow:
           Request:  encrypt_and_mac(K_enc, K_mac, pack_fields(action, data, timestamp))
           Response: decrypt_and_verify(K_enc, K_mac, response) -> [status, data]
-
-        Args:
-            action: "BALANCE", "DEPOSIT", "WITHDRAW", or "LOGOUT"
-            data: transaction data (e.g., amount as string)
-
-        Returns:
-            (status, data) tuple, or (None, error_message) on failure
         """
         if not self.authenticated or not self.sock:
             return None, "Not authenticated"
 
         try:
-            # Build and encrypt the request
+            # build and encrypt the request
             timestamp = generate_timestamp()
             request_plaintext = pack_fields(
                 action.encode('utf-8'),
@@ -458,12 +429,12 @@ class ATMClientGUI:
             self._proto_log(f"→ Sending: {action} {data}", 'txn')
             self._proto_log(f"  Encrypted payload: {len(encrypted_request)} bytes", 'crypto')
 
-            # Acquire lock to prevent concurrent socket access from multiple transaction threads (deposit/withdraw/balance).
+            # acquire lock to prevent concurrent socket access from multiple transaction threads (deposit/withdraw/balance).
             with self.txn_lock:
-                # Send the request
+                # send the request
                 send_data(self.sock, encrypted_request)
 
-                # Receive and decrypt the response
+                # receive and decrypt the response
                 raw_response = recv_data(self.sock)
 
             if raw_response is None:
@@ -584,7 +555,7 @@ class ATMClientGUI:
         if self.sock:
             try:
                 if self.authenticated:
-                    # Try to send logout
+                    # try to send logout
                     timestamp = generate_timestamp()
                     request = pack_fields(b"LOGOUT", b"", timestamp)
                     encrypted = encrypt_and_mac(self.k_enc, self.k_mac, request)
@@ -602,10 +573,7 @@ class ATMClientGUI:
         self.root.mainloop()
 
 
-# ============================================================
 # Main Entry Point
-# ============================================================
-
 if __name__ == '__main__':
     print_separator("COE817 SECURE ATM CLIENT")
     print(f"  Connecting to bank server at {HOST}:{PORT}")
